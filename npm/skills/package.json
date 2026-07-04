@@ -1,0 +1,27 @@
+{
+  "name": "@hxd/skills",
+  "version": "0.1.0",
+  "description": "Skills manager CLI",
+  "license": "MIT",
+  "bin": {
+    "skills": "bin/skills.js"
+  },
+  "files": [
+    "bin/skills.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/huxiaodong07/skills.git"
+  },
+  "optionalDependencies": {
+    "@hxd/skills-win32-x64": "0.1.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

@@ -3,3 +3,4 @@ build/
 .cache/
 .tmp/
 *.log
+npm/skills-win32-x64/bin/skills.exe

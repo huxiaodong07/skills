@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "name": "skills-cli-workspace",
+  "version": "0.1.0",
+  "workspaces": [
+    "npm/*"
+  ],
+  "scripts": {
+    "build:npm": "powershell -ExecutionPolicy Bypass -File scripts/build-npm.ps1",
+    "publish:npm": "powershell -ExecutionPolicy Bypass -File scripts/publish-npm.ps1"
+  }
+}
