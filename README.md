@@ -48,9 +48,12 @@ skills publish path\to\skill --gitlab-url https://git.example.com --project-id 1
 
 ## Skill repositories
 
-This repository is the CLI and aggregate registry. Individual public skills live in separate repositories, for example:
+This repository is the CLI and aggregate registry. A skill source repository can be private, while installable skill packages are hosted by this registry under `registry/packages/`.
 
-- https://github.com/huxiaodong07/glab
+Example:
+
+- source repository: https://github.com/huxiaodong07/glab
+- install package: `registry/packages/glab/0.1.0/glab-0.1.0.skillpack.tar.gz`
 ## Publish npm packages
 
 ```powershell

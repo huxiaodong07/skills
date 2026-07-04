@@ -8,6 +8,7 @@
       "description": "GitLab workflow skills",
       "repository": "https://github.com/huxiaodong07/glab",
       "source": "https://github.com/huxiaodong07/glab/.claude-plugin/marketplace.json",
+      "source_visibility": "private",
       "skills": [
         "glab"
       ]
@@ -17,8 +18,11 @@
     {
       "name": "glab",
       "latest": "0.1.0",
-      "description": "GitLab workflow skill for the glab CLI",
+      "description": "GitLab workflow skill and bundled glab CLI",
       "repository": "https://github.com/huxiaodong07/glab",
+      "source_repository": "https://github.com/huxiaodong07/glab",
+      "source_visibility": "private",
+      "artifact_mode": "embedded",
       "source": "skills/glab",
       "tags": [
         "gitlab",
@@ -32,8 +36,8 @@
       "versions": [
         {
           "version": "0.1.0",
-          "package_url": "https://raw.githubusercontent.com/huxiaodong07/glab/main/registry/packages/glab-0.1.0.skillpack.tar.gz",
-          "manifest_url": "https://raw.githubusercontent.com/huxiaodong07/glab/main/registry/packages/glab-0.1.0.manifest.json",
+          "package_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/glab/0.1.0/glab-0.1.0.skillpack.tar.gz",
+          "manifest_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/glab/0.1.0/glab-0.1.0.manifest.json",
           "sha256": "b3c66cda58a19bf021e58bb75729f779a1ab192f58df2f4e539f7bafa4cead1c"
         }
       ]
