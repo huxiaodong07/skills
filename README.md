@@ -66,6 +66,8 @@ Example:
 
 - source repository: https://github.com/huxiaodong07/glab
 - install package: `registry/packages/glab/0.1.0/glab-0.1.0.skillpack.tar.gz`
+
+Public third-party skill repositories can also be referenced directly with `archive_url` and `source_path`, without copying their package into this registry.
 ## Publish npm packages
 
 ```powershell

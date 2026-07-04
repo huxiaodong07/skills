@@ -96,6 +96,8 @@ type VersionRef struct {
 	Version     string `json:"version"`
 	PackageURL  string `json:"package_url"`
 	ManifestURL string `json:"manifest_url"`
+	ArchiveURL  string `json:"archive_url"`
+	SourcePath  string `json:"source_path"`
 	SHA256      string `json:"sha256"`
 }
 
@@ -403,7 +405,7 @@ func infoCmd(args []string) error {
 		fmt.Printf("Permissions: network=%v filesystem=%v process=%v destructive=%v\n", s.Permissions.Network, s.Permissions.Filesystem, s.Permissions.Process, s.Permissions.Destructive)
 		fmt.Println("Versions:")
 		for _, v := range s.Versions {
-			fmt.Printf("  %s\t%s\n", v.Version, v.PackageURL)
+			fmt.Printf("  %s\t%s\n", v.Version, versionDownloadRef(v))
 		}
 	}
 	return nil
@@ -966,7 +968,10 @@ func installPlugin(p Plugin, yes bool) error {
 }
 
 func installResolvedSkill(s Skill, v VersionRef, yes bool) error {
-	if v.SHA256 == "" {
+	if v.PackageURL == "" && v.ArchiveURL == "" {
+		return fmt.Errorf("skill %s@%s has no package_url or archive_url in index", s.Name, v.Version)
+	}
+	if v.PackageURL != "" && v.SHA256 == "" {
 		return fmt.Errorf("skill %s@%s has no sha256 in index", s.Name, v.Version)
 	}
 	showInstallSummary(s, v)
@@ -982,22 +987,8 @@ func installResolvedSkill(s Skill, v VersionRef, yes bool) error {
 		return err
 	}
 	defer os.RemoveAll(tmp)
-	pkg := filepath.Join(tmp, filepath.Base(v.PackageURL))
-	if err := downloadFile(v.PackageURL, pkg); err != nil {
-		return err
-	}
-	actual, err := fileSHA256(pkg)
-	if err != nil {
-		return err
-	}
-	if !strings.EqualFold(actual, v.SHA256) {
-		return fmt.Errorf("sha256 mismatch: got %s want %s", actual, v.SHA256)
-	}
 	unpackDir := filepath.Join(tmp, "unpack")
-	if err := os.MkdirAll(unpackDir, 0o755); err != nil {
-		return err
-	}
-	if err := untarGz(pkg, unpackDir); err != nil {
+	if err := prepareSkillPackage(s, v, tmp, unpackDir); err != nil {
 		return err
 	}
 	if err := validateSkillDir(unpackDir); err != nil {
@@ -1025,6 +1016,121 @@ func installResolvedSkill(s Skill, v VersionRef, yes bool) error {
 	}
 	fmt.Printf("installed %s@%s to %s\n", s.Name, v.Version, dest)
 	return nil
+}
+
+func prepareSkillPackage(s Skill, v VersionRef, tmp, unpackDir string) error {
+	if v.PackageURL != "" {
+		pkg := filepath.Join(tmp, filepath.Base(v.PackageURL))
+		if err := downloadFile(v.PackageURL, pkg); err != nil {
+			return err
+		}
+		actual, err := fileSHA256(pkg)
+		if err != nil {
+			return err
+		}
+		if !strings.EqualFold(actual, v.SHA256) {
+			return fmt.Errorf("sha256 mismatch: got %s want %s", actual, v.SHA256)
+		}
+		if err := os.MkdirAll(unpackDir, 0o755); err != nil {
+			return err
+		}
+		return untarGz(pkg, unpackDir)
+	}
+
+	archive := filepath.Join(tmp, "source-archive.tar.gz")
+	if err := downloadFile(v.ArchiveURL, archive); err != nil {
+		return err
+	}
+	if v.SHA256 != "" {
+		actual, err := fileSHA256(archive)
+		if err != nil {
+			return err
+		}
+		if !strings.EqualFold(actual, v.SHA256) {
+			return fmt.Errorf("sha256 mismatch: got %s want %s", actual, v.SHA256)
+		}
+	}
+	archiveDir := filepath.Join(tmp, "archive")
+	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
+		return err
+	}
+	if err := untarGz(archive, archiveDir); err != nil {
+		return err
+	}
+	selected, err := findSourcePath(archiveDir, v.SourcePath)
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(selected, unpackDir); err != nil {
+		return err
+	}
+	return ensureGeneratedSkillJSON(unpackDir, s, v)
+}
+
+func findSourcePath(root, sourcePath string) (string, error) {
+	if sourcePath == "" || sourcePath == "." {
+		return root, nil
+	}
+	want := strings.Trim(strings.ReplaceAll(sourcePath, "\\", "/"), "/")
+	var found string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() || found != "" {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		rel = strings.Trim(strings.ReplaceAll(rel, "\\", "/"), "/")
+		if rel == want || strings.HasSuffix(rel, "/"+want) {
+			found = path
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if found == "" {
+		return "", fmt.Errorf("source_path %s not found in archive", sourcePath)
+	}
+	return found, nil
+}
+
+func ensureGeneratedSkillJSON(dir string, s Skill, v VersionRef) error {
+	path := filepath.Join(dir, "skill.json")
+	if exists(path) {
+		return nil
+	}
+	meta := map[string]any{
+		"schema":      1,
+		"name":        s.Name,
+		"version":     v.Version,
+		"description": s.Description,
+		"entry":       "SKILL.md",
+		"tags":        s.Tags,
+		"source":      s.Repository,
+	}
+	b, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(b, '\n'), 0o644)
+}
+
+func versionDownloadRef(v VersionRef) string {
+	if v.PackageURL != "" {
+		return v.PackageURL
+	}
+	if v.ArchiveURL != "" {
+		if v.SourcePath != "" {
+			return v.ArchiveURL + "#" + v.SourcePath
+		}
+		return v.ArchiveURL
+	}
+	return ""
 }
 
 func downloadFile(url, dest string) error {
@@ -1118,6 +1224,8 @@ func untarGz(src, dest string) error {
 			return fmt.Errorf("unsafe path in package: %s", h.Name)
 		}
 		switch h.Typeflag {
+		case tar.TypeXGlobalHeader, tar.TypeXHeader, tar.TypeGNULongName, tar.TypeGNULongLink:
+			continue
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, 0o755); err != nil {
 				return err

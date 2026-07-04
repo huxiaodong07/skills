@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-07-04T00:00:00Z",
+  "generated_at": "2026-07-04T08:35:32Z",
   "plugins": [
     {
       "name": "gitlab-tools",
@@ -39,6 +39,33 @@
           "package_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/glab/0.1.0/glab-0.1.0.skillpack.tar.gz",
           "manifest_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/glab/0.1.0/glab-0.1.0.manifest.json",
           "sha256": "b3c66cda58a19bf021e58bb75729f779a1ab192f58df2f4e539f7bafa4cead1c"
+        }
+      ]
+    },
+    {
+      "name": "karpathy-guidelines",
+      "latest": "1.0.0",
+      "description": "Behavioral guidelines to reduce common LLM coding mistakes",
+      "repository": "https://github.com/multica-ai/andrej-karpathy-skills",
+      "source_repository": "https://github.com/multica-ai/andrej-karpathy-skills",
+      "source_visibility": "public",
+      "artifact_mode": "external-archive",
+      "source": "skills/karpathy-guidelines",
+      "tags": [
+        "coding",
+        "guidelines",
+        "workflow",
+        "review"
+      ],
+      "auth": {
+        "mode": "none",
+        "doc": ""
+      },
+      "versions": [
+        {
+          "version": "1.0.0",
+          "archive_url": "https://codeload.github.com/multica-ai/andrej-karpathy-skills/tar.gz/refs/heads/main",
+          "source_path": "skills/karpathy-guidelines"
         }
       ]
     }
