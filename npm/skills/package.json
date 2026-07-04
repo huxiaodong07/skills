@@ -1,6 +1,6 @@
 {
   "name": "@xiaodonghu/skills",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Skills manager CLI",
   "license": "MIT",
   "bin": {
@@ -18,7 +18,7 @@
     "url": "git+https://github.com/huxiaodong07/skills.git"
   },
   "optionalDependencies": {
-    "@xiaodonghu/skills-win32-x64": "0.2.0"
+    "@xiaodonghu/skills-win32-x64": "0.2.1"
   },
   "publishConfig": {
     "access": "public",

@@ -48,6 +48,15 @@ type Plugin struct {
 	Registry    string   `json:"-"`
 }
 
+type CatalogItem struct {
+	Type        string
+	Name        string
+	Version     string
+	Description string
+	Skill       Skill
+	Plugin      Plugin
+}
+
 type Skill struct {
 	Name        string       `json:"name"`
 	Latest      string       `json:"latest"`
@@ -148,11 +157,8 @@ Usage:
   skills registry add <name> <index-url>
   skills registry list
   skills registry remove <name>
-  skills plugin list
-  skills plugin info <name>
-  skills plugin install <name> [--yes]
-  skills search <query>
-  skills info <name>
+  skills search [query]
+  skills info <name|skill:name|plugin:name>
   skills install <name[@version]> [--version <version>] [--yes]
   skills pack <skill-root> [--out dist]
   skills publish <skill-root> --gitlab-url <url> --project-id <id> [--dist dist] [--token-env CI_JOB_TOKEN] [--insecure-skip-tls-verify]
@@ -277,45 +283,65 @@ func pluginCmd(args []string) error {
 }
 
 func searchCmd(args []string) error {
-	if len(args) != 1 {
-		return errors.New("usage: skills search <query>")
+	if len(args) > 1 {
+		return errors.New("usage: skills search [query]")
 	}
-	skills, err := loadAllSkills()
+	items, err := loadCatalog()
 	if err != nil {
 		return err
 	}
-	q := strings.ToLower(args[0])
+	q := ""
+	if len(args) == 1 {
+		q = strings.ToLower(args[0])
+	}
 	found := 0
-	for _, s := range skills {
-		if matchesSkill(s, q) {
-			fmt.Printf("%s\t%s\t%s\n", s.Name, s.Latest, s.Description)
+	for _, item := range items {
+		if q == "" || matchesCatalogItem(item, q) {
+			fmt.Printf("%s\t%s\t%s\t%s\n", item.Type, item.Name, item.Version, item.Description)
 			found++
 		}
 	}
 	if found == 0 {
-		fmt.Println("no matching skills")
+		fmt.Println("no matching items")
 	}
 	return nil
 }
 
 func infoCmd(args []string) error {
 	if len(args) != 1 {
-		return errors.New("usage: skills info <name>")
+		return errors.New("usage: skills info <name|skill:name|plugin:name>")
 	}
-	s, err := findSkill(args[0])
+	item, err := resolveCatalogItem(args[0])
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Name: %s\n", s.Name)
-	fmt.Printf("Latest: %s\n", s.Latest)
-	fmt.Printf("Description: %s\n", s.Description)
-	fmt.Printf("Repository: %s\n", s.Repository)
-	fmt.Printf("Registry: %s\n", s.Registry)
-	fmt.Printf("Auth: %s (%s)\n", s.Auth.Mode, s.Auth.Doc)
-	fmt.Printf("Permissions: network=%v filesystem=%v process=%v destructive=%v\n", s.Permissions.Network, s.Permissions.Filesystem, s.Permissions.Process, s.Permissions.Destructive)
-	fmt.Println("Versions:")
-	for _, v := range s.Versions {
-		fmt.Printf("  %s\t%s\n", v.Version, v.PackageURL)
+	switch item.Type {
+	case "plugin":
+		p := item.Plugin
+		fmt.Println("Type: plugin")
+		fmt.Printf("Name: %s\n", p.Name)
+		fmt.Printf("Version: %s\n", p.Version)
+		fmt.Printf("Description: %s\n", p.Description)
+		fmt.Printf("Repository: %s\n", p.Repository)
+		fmt.Printf("Registry: %s\n", p.Registry)
+		fmt.Println("Skills:")
+		for _, name := range p.Skills {
+			fmt.Printf("  %s\n", name)
+		}
+	case "skill":
+		s := item.Skill
+		fmt.Println("Type: skill")
+		fmt.Printf("Name: %s\n", s.Name)
+		fmt.Printf("Latest: %s\n", s.Latest)
+		fmt.Printf("Description: %s\n", s.Description)
+		fmt.Printf("Repository: %s\n", s.Repository)
+		fmt.Printf("Registry: %s\n", s.Registry)
+		fmt.Printf("Auth: %s (%s)\n", s.Auth.Mode, s.Auth.Doc)
+		fmt.Printf("Permissions: network=%v filesystem=%v process=%v destructive=%v\n", s.Permissions.Network, s.Permissions.Filesystem, s.Permissions.Process, s.Permissions.Destructive)
+		fmt.Println("Versions:")
+		for _, v := range s.Versions {
+			fmt.Printf("  %s\t%s\n", v.Version, v.PackageURL)
+		}
 	}
 	return nil
 }
@@ -324,7 +350,8 @@ func installCmd(args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: skills install <name[@version]> [--version <version>] [--yes]")
 	}
-	name, version := splitNameVersion(args[0])
+	rawName, version := splitNameVersion(args[0])
+	nameType, name := splitTypedName(rawName)
 	if name == "" || strings.HasPrefix(name, "-") {
 		return errors.New("usage: skills install <name[@version]> [--version <version>] [--yes]")
 	}
@@ -349,7 +376,30 @@ func installCmd(args []string) error {
 			return fmt.Errorf("unknown install option %q", args[i])
 		}
 	}
-	return installSkillByName(name, version, yes)
+	if nameType == "skill" {
+		return installSkillByName(name, version, yes)
+	}
+	if nameType == "plugin" {
+		if version != "" {
+			return errors.New("plugin install does not support --version yet")
+		}
+		return installPluginByName(name, yes)
+	}
+	item, err := resolveCatalogItem(rawName)
+	if err != nil {
+		return err
+	}
+	if item.Type == "plugin" {
+		if version != "" {
+			return errors.New("plugin install does not support --version yet")
+		}
+		return installPlugin(item.Plugin, yes)
+	}
+	v, err := chooseVersion(item.Skill, version)
+	if err != nil {
+		return err
+	}
+	return installResolvedSkill(item.Skill, v, yes)
 }
 
 func listCmd(args []string) error {
@@ -530,6 +580,31 @@ func loadAllPlugins() ([]Plugin, error) {
 	return out, nil
 }
 
+func loadCatalog() ([]CatalogItem, error) {
+	plugins, err := loadAllPlugins()
+	if err != nil {
+		return nil, err
+	}
+	skills, err := loadAllSkills()
+	if err != nil {
+		return nil, err
+	}
+	items := make([]CatalogItem, 0, len(plugins)+len(skills))
+	for _, p := range plugins {
+		items = append(items, CatalogItem{Type: "plugin", Name: p.Name, Version: p.Version, Description: p.Description, Plugin: p})
+	}
+	for _, s := range skills {
+		items = append(items, CatalogItem{Type: "skill", Name: s.Name, Version: s.Latest, Description: s.Description, Skill: s})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Name == items[j].Name {
+			return items[i].Type < items[j].Type
+		}
+		return items[i].Name < items[j].Name
+	})
+	return items, nil
+}
+
 func fetchIndex(url string) (Index, error) {
 	var r io.ReadCloser
 	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
@@ -615,6 +690,76 @@ func matchesSkill(s Skill, q string) bool {
 	return false
 }
 
+func matchesPlugin(p Plugin, q string) bool {
+	if strings.Contains(strings.ToLower(p.Name), q) || strings.Contains(strings.ToLower(p.Description), q) {
+		return true
+	}
+	for _, s := range p.Skills {
+		if strings.Contains(strings.ToLower(s), q) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesCatalogItem(item CatalogItem, q string) bool {
+	if strings.Contains(strings.ToLower(item.Type), q) || strings.Contains(strings.ToLower(item.Name), q) || strings.Contains(strings.ToLower(item.Description), q) {
+		return true
+	}
+	if item.Type == "plugin" {
+		return matchesPlugin(item.Plugin, q)
+	}
+	return matchesSkill(item.Skill, q)
+}
+
+func resolveCatalogItem(raw string) (CatalogItem, error) {
+	nameType, name := splitTypedName(raw)
+	if nameType == "skill" {
+		s, err := findSkill(name)
+		if err != nil {
+			return CatalogItem{}, err
+		}
+		return CatalogItem{Type: "skill", Name: s.Name, Version: s.Latest, Description: s.Description, Skill: s}, nil
+	}
+	if nameType == "plugin" {
+		p, err := findPlugin(name)
+		if err != nil {
+			return CatalogItem{}, err
+		}
+		return CatalogItem{Type: "plugin", Name: p.Name, Version: p.Version, Description: p.Description, Plugin: p}, nil
+	}
+	plugins, pErr := loadAllPlugins()
+	if pErr != nil {
+		return CatalogItem{}, pErr
+	}
+	skills, sErr := loadAllSkills()
+	if sErr != nil {
+		return CatalogItem{}, sErr
+	}
+	var matched []CatalogItem
+	for _, p := range plugins {
+		if p.Name == name {
+			matched = append(matched, CatalogItem{Type: "plugin", Name: p.Name, Version: p.Version, Description: p.Description, Plugin: p})
+		}
+	}
+	for _, s := range skills {
+		if s.Name == name {
+			matched = append(matched, CatalogItem{Type: "skill", Name: s.Name, Version: s.Latest, Description: s.Description, Skill: s})
+		}
+	}
+	if len(matched) == 1 {
+		return matched[0], nil
+	}
+	if len(matched) > 1 {
+		var names []string
+		for _, item := range matched {
+			names = append(names, item.Type+":"+item.Name)
+		}
+		return CatalogItem{}, fmt.Errorf("ambiguous item %s; use %s", name, strings.Join(names, " or "))
+	}
+	return CatalogItem{}, fmt.Errorf("item not found: %s", name)
+}
+
 func chooseVersion(s Skill, version string) (VersionRef, error) {
 	if version == "" {
 		version = s.Latest
@@ -641,6 +786,17 @@ func splitNameVersion(raw string) (string, string) {
 	return raw, ""
 }
 
+func splitTypedName(raw string) (string, string) {
+	parts := strings.SplitN(raw, ":", 2)
+	if len(parts) != 2 {
+		return "", raw
+	}
+	if parts[0] == "skill" || parts[0] == "plugin" {
+		return parts[0], parts[1]
+	}
+	return "", raw
+}
+
 func showInstallSummary(s Skill, v VersionRef) {
 	fmt.Printf("Skill: %s\nVersion: %s\nSource: %s\n", s.Name, v.Version, s.Repository)
 	fmt.Printf("Permissions: network=%v filesystem=%v process=%v destructive=%v\n", s.Permissions.Network, s.Permissions.Filesystem, s.Permissions.Process, s.Permissions.Destructive)
@@ -657,6 +813,28 @@ func installSkillByName(name, version string, yes bool) error {
 		return err
 	}
 	return installResolvedSkill(s, v, yes)
+}
+
+func installPluginByName(name string, yes bool) error {
+	p, err := findPlugin(name)
+	if err != nil {
+		return err
+	}
+	return installPlugin(p, yes)
+}
+
+func installPlugin(p Plugin, yes bool) error {
+	if len(p.Skills) == 0 {
+		return fmt.Errorf("plugin %s has no skills", p.Name)
+	}
+	fmt.Printf("Plugin: %s\nVersion: %s\nSkills: %s\n", p.Name, p.Version, strings.Join(p.Skills, ", "))
+	for _, skillName := range p.Skills {
+		if err := installSkillByName(skillName, "", yes); err != nil {
+			return fmt.Errorf("install plugin %s skill %s: %w", p.Name, skillName, err)
+		}
+	}
+	fmt.Printf("installed plugin %s with %d skills\n", p.Name, len(p.Skills))
+	return nil
 }
 
 func installResolvedSkill(s Skill, v VersionRef, yes bool) error {

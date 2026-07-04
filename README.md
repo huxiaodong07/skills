@@ -19,11 +19,12 @@ https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/registry-ind
 
 ```powershell
 skills registry list
+skills search
 skills search glab
 skills info glab
 skills install glab
-skills plugin list
-skills plugin install gitlab-tools
+skills info gitlab-tools
+skills install gitlab-tools
 skills list
 skills doctor
 ```
