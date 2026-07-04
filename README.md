@@ -5,7 +5,7 @@ Internal skill package manager.
 ## MVP commands
 
 ```powershell
-skills registry add ciqtek http://172.16.30.151:8099/MR/skills/skills-index/-/raw/main/registry-index.json
+skills registry add ciqtek http://172.16.30.151:8099/api/v4/projects/144/repository/files/registry-index.json/raw?ref=main
 skills search glab
 skills info glab
 skills install glab
@@ -21,3 +21,4 @@ skills publish D:\ToolManage\skills\glab --gitlab-url http://172.16.30.151:8099 
 ```
 
 `skills` does not manage tool tokens. Authentication is handled by each installed skill or its CLI.
+

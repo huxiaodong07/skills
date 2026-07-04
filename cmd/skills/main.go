@@ -503,6 +503,20 @@ func showInstallSummary(s Skill, v VersionRef) {
 }
 
 func downloadFile(url, dest string) error {
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		src, err := os.Open(url)
+		if err != nil {
+			return err
+		}
+		defer src.Close()
+		out, err := os.Create(dest)
+		if err != nil {
+			return err
+		}
+		defer out.Close()
+		_, err = io.Copy(out, src)
+		return err
+	}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return err
