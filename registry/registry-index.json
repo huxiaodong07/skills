@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-07-04T09:04:43Z",
+  "generated_at": "2026-07-04T09:49:53Z",
   "plugins": [
     {
       "name": "gitlab-tools",
@@ -108,6 +108,42 @@
           "package_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/implementing-figma-qt-widgets/0.2.0/implementing-figma-qt-widgets-0.2.0.skillpack.tar.gz",
           "manifest_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/implementing-figma-qt-widgets/0.2.0/implementing-figma-qt-widgets-0.2.0.manifest.json",
           "sha256": "2f297105aa1da98ae5c5eac42e84c1518aff593b82583f707b326596a3e3559a"
+        }
+      ]
+    },
+    {
+      "name": "nexus",
+      "latest": "0.1.0",
+      "description": "Manage Nexus Repository Manager repositories and artifacts with a compiled CLI.",
+      "repository": "https://github.com/huxiaodong07/skills",
+      "source_repository": "https://github.com/huxiaodong07/skills-tools",
+      "source_visibility": "private",
+      "artifact_mode": "registry-packaged",
+      "source": "skills/nexus",
+      "tags": [
+        "nexus",
+        "repository",
+        "artifacts",
+        "conan",
+        "raw",
+        "cli"
+      ],
+      "auth": {
+        "mode": "env-or-flags",
+        "doc": "Use NEXUS_TOKEN or NEXUS_USER/NEXUS_PASSWORD. Do not store credentials in the registry."
+      },
+      "permissions": {
+        "network": true,
+        "filesystem": true,
+        "process": true,
+        "destructive": true
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "package_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/nexus/0.1.0/nexus-0.1.0.skillpack.tar.gz",
+          "manifest_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/nexus/0.1.0/nexus-0.1.0.manifest.json",
+          "sha256": "de19d5c63fe6586bb0b6608700f5c41a131f37d962cc9af19b593728bfef2a9d"
         }
       ]
     }
