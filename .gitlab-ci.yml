@@ -1,0 +1,26 @@
+stages:
+  - build
+
+build_windows:
+  image: golang:1.22
+  stage: build
+  variables:
+    GOOS: windows
+    GOARCH: amd64
+  script:
+    - go build -trimpath -o dist/skills.exe ./cmd/skills
+  artifacts:
+    paths:
+      - dist/skills.exe
+
+build_linux:
+  image: golang:1.22
+  stage: build
+  variables:
+    GOOS: linux
+    GOARCH: amd64
+  script:
+    - go build -trimpath -o dist/skills ./cmd/skills
+  artifacts:
+    paths:
+      - dist/skills
