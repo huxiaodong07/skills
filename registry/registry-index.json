@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-07-04T09:20:00Z",
+  "generated_at": "2026-07-04T09:04:43Z",
   "plugins": [
     {
       "name": "gitlab-tools",
@@ -71,13 +71,13 @@
     },
     {
       "name": "implementing-figma-qt-widgets",
-      "latest": "0.1.0",
+      "latest": "0.2.0",
       "description": "Implement or refine high-fidelity Qt Widgets UI from Figma designs, with QSS and visual verification helper commands.",
       "repository": "https://github.com/huxiaodong07/skills",
-      "source_repository": "https://github.com/huxiaodong07/skills",
-      "source_visibility": "public",
+      "source_repository": "https://github.com/huxiaodong07/skills-tools",
+      "source_visibility": "private",
       "artifact_mode": "registry-packaged",
-      "source": "registry/packages/implementing-figma-qt-widgets/0.1.0",
+      "source": "skills/implementing-figma-qt-widgets",
       "tags": [
         "figma",
         "qt",
@@ -102,6 +102,12 @@
           "package_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/implementing-figma-qt-widgets/0.1.0/implementing-figma-qt-widgets-0.1.0.skillpack.tar.gz",
           "manifest_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/implementing-figma-qt-widgets/0.1.0/implementing-figma-qt-widgets-0.1.0.manifest.json",
           "sha256": "d57c4d74d6a479ac4b11dfc6550e86ef5f8cc0548d5776f62ea62b8b9d60cb82"
+        },
+        {
+          "version": "0.2.0",
+          "package_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/implementing-figma-qt-widgets/0.2.0/implementing-figma-qt-widgets-0.2.0.skillpack.tar.gz",
+          "manifest_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/implementing-figma-qt-widgets/0.2.0/implementing-figma-qt-widgets-0.2.0.manifest.json",
+          "sha256": "2f297105aa1da98ae5c5eac42e84c1518aff593b82583f707b326596a3e3559a"
         }
       ]
     }
