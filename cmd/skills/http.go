@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"os"
+	"time"
 )
 
 func internalHTTPClient() *http.Client {
@@ -11,8 +12,8 @@ func internalHTTPClient() *http.Client {
 }
 
 func internalHTTPClientWithTLS(insecureSkipVerify bool) *http.Client {
-	return &http.Client{Transport: &http.Transport{
-		Proxy: nil,
+	return &http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: insecureSkipVerify, //nolint:gosec // explicit CLI flag for internal self-signed GitLab.
 		},
