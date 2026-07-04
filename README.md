@@ -23,10 +23,28 @@ skills search
 skills search glab
 skills info glab
 skills install glab
+skills install glab --agent claude
+skills install glab --agent all --global
 skills info gitlab-tools
 skills install gitlab-tools
 skills list
+skills targets
 skills doctor
+```
+
+By default, `skills install <name>` installs the skill for Codex in the current directory:
+
+```text
+./.agents/skills/<name>
+```
+
+Use `--agent codex|claude|all` to choose the target agent. Use `--global` to install to the user-level agent directory instead of the current project:
+
+```text
+Codex project:  ./.agents/skills/<name>
+Claude project: ./.claude/skills/<name>
+Codex user:     ~/.agents/skills/<name>
+Claude user:    ~/.claude/skills/<name>
 ```
 
 ## Proxy configuration

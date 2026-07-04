@@ -1,6 +1,6 @@
 {
   "name": "@xiaodonghu/skills-win32-x64",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Windows x64 binary for @xiaodonghu/skills",
   "license": "MIT",
   "os": [

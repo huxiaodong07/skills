@@ -113,6 +113,22 @@ type InstalledSkill struct {
 	InstalledAt string `json:"installed_at"`
 }
 
+type SkillTarget struct {
+	Agent  string
+	Global bool
+}
+
+type ResolvedTarget struct {
+	Agent string
+	Scope string
+	Dir   string
+}
+
+type InstallOptions struct {
+	Yes    bool
+	Target SkillTarget
+}
+
 type BinLinks struct {
 	Commands map[string]BinLink `json:"commands"`
 }
@@ -149,6 +165,8 @@ func run(args []string) error {
 		return infoCmd(args[1:])
 	case "install":
 		return installCmd(args[1:])
+	case "targets":
+		return targetsCmd(args[1:])
 	case "pack":
 		return packCmd(args[1:])
 	case "publish":
@@ -176,11 +194,12 @@ Usage:
   skills registry remove <name>
   skills search [query]
   skills info <name|skill:name|plugin:name>
-  skills install <name[@version]> [--version <version>] [--yes]
+  skills install <name[@version]> [--version <version>] [--agent codex|claude|all] [--global] [--yes]
+  skills targets
   skills pack <skill-root> [--out dist]
   skills publish <skill-root> --gitlab-url <url> --project-id <id> [--dist dist] [--token-env CI_JOB_TOKEN] [--insecure-skip-tls-verify]
-  skills list
-  skills remove <name> --yes
+  skills list [--agent codex|claude|all] [--global]
+  skills remove <name> [--agent codex|claude|all] [--global] --yes
   skills doctor
 
 Authentication is external. skills does not store or inject tool tokens.`)
@@ -335,8 +354,10 @@ func pluginCmd(args []string) error {
 			return fmt.Errorf("plugin %s has no skills", p.Name)
 		}
 		fmt.Printf("Plugin: %s\nVersion: %s\nSkills: %s\n", p.Name, p.Version, strings.Join(p.Skills, ", "))
+		opts := defaultInstallOptions()
+		opts.Yes = yes
 		for _, skillName := range p.Skills {
-			if err := installSkillByName(skillName, "", yes); err != nil {
+			if err := installSkillByName(skillName, "", opts); err != nil {
 				return fmt.Errorf("install plugin %s skill %s: %w", p.Name, skillName, err)
 			}
 		}
@@ -413,18 +434,30 @@ func infoCmd(args []string) error {
 
 func installCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: skills install <name[@version]> [--version <version>] [--yes]")
+		return errors.New("usage: skills install <name[@version]> [--version <version>] [--agent codex|claude|all] [--global] [--yes]")
 	}
 	rawName, version := splitNameVersion(args[0])
 	nameType, name := splitTypedName(rawName)
 	if name == "" || strings.HasPrefix(name, "-") {
-		return errors.New("usage: skills install <name[@version]> [--version <version>] [--yes]")
+		return errors.New("usage: skills install <name[@version]> [--version <version>] [--agent codex|claude|all] [--global] [--yes]")
 	}
-	yes := false
+	opts := defaultInstallOptions()
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
 		case "--yes", "-y":
-			yes = true
+			opts.Yes = true
+		case "--agent":
+			if i+1 >= len(args) {
+				return errors.New("install --agent requires codex, claude, or all")
+			}
+			i++
+			agent, err := normalizeAgent(args[i])
+			if err != nil {
+				return err
+			}
+			opts.Target.Agent = agent
+		case "--global":
+			opts.Target.Global = true
 		case "--version":
 			if i+1 >= len(args) {
 				return errors.New("install --version requires a value")
@@ -442,13 +475,13 @@ func installCmd(args []string) error {
 		}
 	}
 	if nameType == "skill" {
-		return installSkillByName(name, version, yes)
+		return installSkillByName(name, version, opts)
 	}
 	if nameType == "plugin" {
 		if version != "" {
 			return errors.New("plugin install does not support --version yet")
 		}
-		return installPluginByName(name, yes)
+		return installPluginByName(name, opts)
 	}
 	item, err := resolveCatalogItem(rawName)
 	if err != nil {
@@ -458,66 +491,115 @@ func installCmd(args []string) error {
 		if version != "" {
 			return errors.New("plugin install does not support --version yet")
 		}
-		return installPlugin(item.Plugin, yes)
+		return installPlugin(item.Plugin, opts)
 	}
 	v, err := chooseVersion(item.Skill, version)
 	if err != nil {
 		return err
 	}
-	return installResolvedSkill(item.Skill, v, yes)
+	return installResolvedSkill(item.Skill, v, opts)
 }
 
 func listCmd(args []string) error {
-	lock, err := loadLock()
+	target, err := parseTargetOptions(args)
 	if err != nil {
 		return err
 	}
-	if len(lock.Installed) == 0 {
-		fmt.Println("no skills installed")
-		return nil
+	targets, err := resolveTargets(target)
+	if err != nil {
+		return err
 	}
-	for _, s := range lock.Installed {
-		fmt.Printf("%s\t%s\t%s\n", s.Name, s.Version, s.InstalledAt)
+	found := false
+	for _, target := range targets {
+		lock, err := loadLock(target.Dir)
+		if err != nil {
+			return err
+		}
+		for _, s := range lock.Installed {
+			fmt.Printf("%s:%s\t%s\t%s\t%s\n", target.Agent, target.Scope, s.Name, s.Version, s.InstalledAt)
+			found = true
+		}
+	}
+	if !found {
+		fmt.Println("no skills installed")
 	}
 	return nil
 }
 
 func removeCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: skills remove <name> --yes")
-	}
-	if !hasFlag(args[1:], "--yes") {
-		return errors.New("remove requires --yes")
+		return errors.New("usage: skills remove <name> [--agent codex|claude|all] [--global] --yes")
 	}
 	name := args[0]
-	if err := removeBinLinks(name); err != nil {
-		return err
-	}
-	dest := filepath.Join(installDir(), name)
-	if err := os.RemoveAll(dest); err != nil {
-		return err
-	}
-	lock, err := loadLock()
+	target, yes, err := parseRemoveOptions(args[1:])
 	if err != nil {
 		return err
 	}
-	kept := lock.Installed[:0]
-	for _, s := range lock.Installed {
-		if s.Name != name {
-			kept = append(kept, s)
+	if !yes {
+		return errors.New("remove requires --yes")
+	}
+	targets, err := resolveTargets(target)
+	if err != nil {
+		return err
+	}
+	for _, target := range targets {
+		dest := filepath.Join(target.Dir, name)
+		if err := os.RemoveAll(dest); err != nil {
+			return err
+		}
+		lock, err := loadLock(target.Dir)
+		if err != nil {
+			return err
+		}
+		kept := lock.Installed[:0]
+		for _, s := range lock.Installed {
+			if s.Name != name {
+				kept = append(kept, s)
+			}
+		}
+		lock.Installed = kept
+		if err := saveLock(target.Dir, lock); err != nil {
+			return err
 		}
 	}
-	lock.Installed = kept
-	if err := saveLock(lock); err != nil {
-		return err
+	if remainingDir, version := findKnownInstalledSkill(name); remainingDir != "" {
+		if err := exposeSkillBin(remainingDir, name, version, true); err != nil {
+			return err
+		}
+	} else {
+		if err := removeBinLinks(name); err != nil {
+			return err
+		}
 	}
 	fmt.Printf("removed %s\n", name)
 	return nil
 }
 
+func targetsCmd(args []string) error {
+	if len(args) != 0 {
+		return errors.New("usage: skills targets")
+	}
+	targets, err := allKnownTargets()
+	if err != nil {
+		return err
+	}
+	for _, target := range targets {
+		fmt.Printf("%s:%s\t%s\n", target.Agent, target.Scope, target.Dir)
+	}
+	fmt.Printf("bin\t%s\n", commandBinDir())
+	return nil
+}
+
 func doctorCmd(args []string) error {
 	fmt.Printf("config dir: %s\n", configDir())
-	fmt.Printf("install dir: %s\n", installDir())
+	targets, err := allKnownTargets()
+	if err != nil {
+		return err
+	}
+	fmt.Println("install targets:")
+	for _, target := range targets {
+		fmt.Printf("  %s:%s\t%s\n", target.Agent, target.Scope, target.Dir)
+	}
 	fmt.Printf("command bin: %s\n", commandBinDir())
 	fmt.Printf("command bin on PATH: %v\n", commandBinOnPATH())
 	cfg, err := loadConfig()
@@ -551,8 +633,11 @@ func installDir() string {
 	if v := os.Getenv("SKILLS_INSTALL_DIR"); v != "" {
 		return v
 	}
-	h, _ := os.UserHomeDir()
-	return filepath.Join(h, ".agents", "skills")
+	dir, err := targetDir(SkillTarget{Agent: "codex", Global: false})
+	if err != nil {
+		return filepath.Join(".", ".agents", "skills")
+	}
+	return dir
 }
 
 func hxdHomeDir() string {
@@ -567,7 +652,139 @@ func commandBinDir() string { return filepath.Join(hxdHomeDir(), "bin") }
 func linksPath() string     { return filepath.Join(hxdHomeDir(), "links.json") }
 
 func configPath() string { return filepath.Join(configDir(), "config.json") }
-func lockPath() string   { return filepath.Join(installDir(), "skills.lock") }
+func lockPath(dir string) string {
+	return filepath.Join(dir, "skills.lock")
+}
+
+func defaultInstallOptions() InstallOptions {
+	return InstallOptions{Target: SkillTarget{Agent: "codex", Global: false}}
+}
+
+func parseTargetOptions(args []string) (SkillTarget, error) {
+	target := SkillTarget{Agent: "codex", Global: false}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--agent":
+			if i+1 >= len(args) {
+				return target, errors.New("--agent requires codex, claude, or all")
+			}
+			i++
+			agent, err := normalizeAgent(args[i])
+			if err != nil {
+				return target, err
+			}
+			target.Agent = agent
+		case "--global":
+			target.Global = true
+		default:
+			return target, fmt.Errorf("unknown target option %q", args[i])
+		}
+	}
+	return target, nil
+}
+
+func parseRemoveOptions(args []string) (SkillTarget, bool, error) {
+	target := SkillTarget{Agent: "codex", Global: false}
+	yes := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--yes", "-y":
+			yes = true
+		case "--agent":
+			if i+1 >= len(args) {
+				return target, yes, errors.New("--agent requires codex, claude, or all")
+			}
+			i++
+			agent, err := normalizeAgent(args[i])
+			if err != nil {
+				return target, yes, err
+			}
+			target.Agent = agent
+		case "--global":
+			target.Global = true
+		default:
+			return target, yes, fmt.Errorf("unknown remove option %q", args[i])
+		}
+	}
+	return target, yes, nil
+}
+
+func normalizeAgent(raw string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "codex":
+		return "codex", nil
+	case "claude":
+		return "claude", nil
+	case "all", "both":
+		return "all", nil
+	default:
+		return "", fmt.Errorf("unsupported agent %q; use codex, claude, or all", raw)
+	}
+}
+
+func resolveTargets(target SkillTarget) ([]ResolvedTarget, error) {
+	agent, err := normalizeAgent(target.Agent)
+	if err != nil {
+		return nil, err
+	}
+	agents := []string{agent}
+	if agent == "all" {
+		agents = []string{"codex", "claude"}
+	}
+	out := make([]ResolvedTarget, 0, len(agents))
+	for _, agent := range agents {
+		dir, err := targetDir(SkillTarget{Agent: agent, Global: target.Global})
+		if err != nil {
+			return nil, err
+		}
+		scope := "project"
+		if target.Global {
+			scope = "user"
+		}
+		out = append(out, ResolvedTarget{Agent: agent, Scope: scope, Dir: dir})
+	}
+	return out, nil
+}
+
+func targetDir(target SkillTarget) (string, error) {
+	agent, err := normalizeAgent(target.Agent)
+	if err != nil {
+		return "", err
+	}
+	if agent == "all" {
+		return "", errors.New("targetDir requires a concrete agent")
+	}
+	if target.Global {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		if agent == "claude" {
+			return filepath.Join(h, ".claude", "skills"), nil
+		}
+		return filepath.Join(h, ".agents", "skills"), nil
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	if agent == "claude" {
+		return filepath.Join(cwd, ".claude", "skills"), nil
+	}
+	return filepath.Join(cwd, ".agents", "skills"), nil
+}
+
+func allKnownTargets() ([]ResolvedTarget, error) {
+	var out []ResolvedTarget
+	for _, global := range []bool{false, true} {
+		targets, err := resolveTargets(SkillTarget{Agent: "all", Global: global})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, targets...)
+	}
+	return out, nil
+}
 
 func loadConfig() (Config, error) {
 	b, err := os.ReadFile(configPath())
@@ -933,7 +1150,7 @@ func showInstallSummary(s Skill, v VersionRef) {
 	fmt.Printf("Authentication: %s (%s)\n", s.Auth.Mode, s.Auth.Doc)
 }
 
-func installSkillByName(name, version string, yes bool) error {
+func installSkillByName(name, version string, opts InstallOptions) error {
 	s, err := findSkill(name)
 	if err != nil {
 		return err
@@ -942,24 +1159,24 @@ func installSkillByName(name, version string, yes bool) error {
 	if err != nil {
 		return err
 	}
-	return installResolvedSkill(s, v, yes)
+	return installResolvedSkill(s, v, opts)
 }
 
-func installPluginByName(name string, yes bool) error {
+func installPluginByName(name string, opts InstallOptions) error {
 	p, err := findPlugin(name)
 	if err != nil {
 		return err
 	}
-	return installPlugin(p, yes)
+	return installPlugin(p, opts)
 }
 
-func installPlugin(p Plugin, yes bool) error {
+func installPlugin(p Plugin, opts InstallOptions) error {
 	if len(p.Skills) == 0 {
 		return fmt.Errorf("plugin %s has no skills", p.Name)
 	}
 	fmt.Printf("Plugin: %s\nVersion: %s\nSkills: %s\n", p.Name, p.Version, strings.Join(p.Skills, ", "))
 	for _, skillName := range p.Skills {
-		if err := installSkillByName(skillName, "", yes); err != nil {
+		if err := installSkillByName(skillName, "", opts); err != nil {
 			return fmt.Errorf("install plugin %s skill %s: %w", p.Name, skillName, err)
 		}
 	}
@@ -967,22 +1184,28 @@ func installPlugin(p Plugin, yes bool) error {
 	return nil
 }
 
-func installResolvedSkill(s Skill, v VersionRef, yes bool) error {
+func installResolvedSkill(s Skill, v VersionRef, opts InstallOptions) error {
 	if v.PackageURL == "" && v.ArchiveURL == "" {
 		return fmt.Errorf("skill %s@%s has no package_url or archive_url in index", s.Name, v.Version)
 	}
 	if v.PackageURL != "" && v.SHA256 == "" {
 		return fmt.Errorf("skill %s@%s has no sha256 in index", s.Name, v.Version)
 	}
-	showInstallSummary(s, v)
-	dest := filepath.Join(installDir(), s.Name)
-	if exists(dest) && !yes {
-		return fmt.Errorf("%s already exists; rerun with --yes to replace", dest)
-	}
-	if err := os.MkdirAll(installDir(), 0o755); err != nil {
+	targets, err := resolveTargets(opts.Target)
+	if err != nil {
 		return err
 	}
-	tmp, err := os.MkdirTemp(installDir(), ".tmp-install-*")
+	showInstallSummary(s, v)
+	for _, target := range targets {
+		fmt.Printf("Target: %s:%s %s\n", target.Agent, target.Scope, target.Dir)
+	}
+	for _, target := range targets {
+		dest := filepath.Join(target.Dir, s.Name)
+		if exists(dest) && !opts.Yes {
+			return fmt.Errorf("%s already exists; rerun with --yes to replace", dest)
+		}
+	}
+	tmp, err := os.MkdirTemp("", "skills-install-*")
 	if err != nil {
 		return err
 	}
@@ -994,27 +1217,33 @@ func installResolvedSkill(s Skill, v VersionRef, yes bool) error {
 	if err := validateSkillDir(unpackDir); err != nil {
 		return err
 	}
-	if err := checkBinConflicts(unpackDir, s.Name, yes); err != nil {
+	if err := checkBinConflicts(unpackDir, s.Name, opts.Yes); err != nil {
 		return err
 	}
-	if exists(dest) {
-		if err := removeBinLinks(s.Name); err != nil {
+	if err := removeBinLinks(s.Name); err != nil {
+		return err
+	}
+	for _, target := range targets {
+		dest := filepath.Join(target.Dir, s.Name)
+		if err := os.MkdirAll(target.Dir, 0o755); err != nil {
 			return err
 		}
-		if err := os.RemoveAll(dest); err != nil {
+		if exists(dest) {
+			if err := os.RemoveAll(dest); err != nil {
+				return err
+			}
+		}
+		if err := copyDir(unpackDir, dest); err != nil {
 			return err
 		}
+		if err := updateLock(target.Dir, InstalledSkill{Name: s.Name, Version: v.Version, Registry: s.Registry, SHA256: v.SHA256, InstalledAt: time.Now().Format(time.RFC3339)}); err != nil {
+			return err
+		}
+		if err := exposeSkillBin(dest, s.Name, v.Version, true); err != nil {
+			return err
+		}
+		fmt.Printf("installed %s@%s to %s\n", s.Name, v.Version, dest)
 	}
-	if err := os.Rename(unpackDir, dest); err != nil {
-		return err
-	}
-	if err := exposeSkillBin(dest, s.Name, v.Version, true); err != nil {
-		return err
-	}
-	if err := updateLock(InstalledSkill{Name: s.Name, Version: v.Version, Registry: s.Registry, SHA256: v.SHA256, InstalledAt: time.Now().Format(time.RFC3339)}); err != nil {
-		return err
-	}
-	fmt.Printf("installed %s@%s to %s\n", s.Name, v.Version, dest)
 	return nil
 }
 
@@ -1262,9 +1491,9 @@ func validateSkillDir(dir string) error {
 	return nil
 }
 
-func loadLock() (LockFile, error) {
+func loadLock(dir string) (LockFile, error) {
 	var lock LockFile
-	b, err := os.ReadFile(lockPath())
+	b, err := os.ReadFile(lockPath(dir))
 	if os.IsNotExist(err) {
 		return lock, nil
 	}
@@ -1274,30 +1503,30 @@ func loadLock() (LockFile, error) {
 	return lock, json.Unmarshal(b, &lock)
 }
 
-func saveLock(lock LockFile) error {
-	if err := os.MkdirAll(installDir(), 0o755); err != nil {
+func saveLock(dir string, lock LockFile) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	b, err := json.MarshalIndent(lock, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(lockPath(), append(b, '\n'), 0o600)
+	return os.WriteFile(lockPath(dir), append(b, '\n'), 0o600)
 }
 
-func updateLock(item InstalledSkill) error {
-	lock, err := loadLock()
+func updateLock(dir string, item InstalledSkill) error {
+	lock, err := loadLock(dir)
 	if err != nil {
 		return err
 	}
 	for i := range lock.Installed {
 		if lock.Installed[i].Name == item.Name {
 			lock.Installed[i] = item
-			return saveLock(lock)
+			return saveLock(dir, lock)
 		}
 	}
 	lock.Installed = append(lock.Installed, item)
-	return saveLock(lock)
+	return saveLock(dir, lock)
 }
 
 func loadBinLinks() (BinLinks, error) {
@@ -1438,6 +1667,67 @@ func removeBinLinks(skillName string) error {
 		return saveBinLinks(links)
 	}
 	return nil
+}
+
+func findKnownInstalledSkill(skillName string) (string, string) {
+	targets, err := allKnownTargets()
+	if err != nil {
+		return "", ""
+	}
+	for _, target := range targets {
+		dir := filepath.Join(target.Dir, skillName)
+		if !exists(filepath.Join(dir, "SKILL.md")) {
+			continue
+		}
+		lock, err := loadLock(target.Dir)
+		if err != nil {
+			continue
+		}
+		version := ""
+		for _, item := range lock.Installed {
+			if item.Name == skillName {
+				version = item.Version
+				break
+			}
+		}
+		return dir, version
+	}
+	return "", ""
+}
+
+func copyDir(source, target string) error {
+	sourceAbs, err := filepath.Abs(source)
+	if err != nil {
+		return err
+	}
+	targetAbs, err := filepath.Abs(target)
+	if err != nil {
+		return err
+	}
+	return filepath.WalkDir(sourceAbs, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(sourceAbs, path)
+		if err != nil {
+			return err
+		}
+		dest := filepath.Join(targetAbs, rel)
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return os.MkdirAll(dest, info.Mode())
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return err
+		}
+		return copyFile(path, dest, info.Mode())
+	})
 }
 
 func copyFile(source, target string, mode os.FileMode) error {
