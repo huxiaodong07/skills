@@ -5,7 +5,7 @@ Internal skill package manager.
 ## Install from npm
 
 ```powershell
-npm install -g @hxd/skills
+npm install -g @xiaodonghu/skills
 skills --help
 ```
 
@@ -35,5 +35,6 @@ skills publish D:\ToolManage\skills\glab --gitlab-url http://172.16.30.151:8099 
 .\scripts\publish-npm.ps1 -Version 0.1.0
 ```
 
-The public npm wrapper is `@hxd/skills`. The Windows binary package is `@hxd/skills-win32-x64`.
+The public npm wrapper is `@xiaodonghu/skills`. The Windows binary package is `@xiaodonghu/skills-win32-x64`.
+
 

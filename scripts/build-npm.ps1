@@ -28,8 +28,8 @@ function Set-JsonVersion {
 
   $json = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
   $json.version = $Version
-  if ($json.optionalDependencies -and $json.optionalDependencies.PSObject.Properties.Name -contains "@hxd/skills-win32-x64") {
-    $json.optionalDependencies."@hxd/skills-win32-x64" = $Version
+  if ($json.optionalDependencies -and $json.optionalDependencies.PSObject.Properties.Name -contains "@xiaodonghu/skills-win32-x64") {
+    $json.optionalDependencies."@xiaodonghu/skills-win32-x64" = $Version
   }
   $json | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $Path -Encoding UTF8
 }
@@ -52,3 +52,4 @@ try {
 }
 
 Write-Host "Built npm package binary: $(Join-Path $binDir "skills.exe")"
+

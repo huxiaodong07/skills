@@ -1,9 +1,10 @@
-# @hxd/skills-win32-x64
+# @xiaodonghu/skills-win32-x64
 
-Windows x64 binary package for `@hxd/skills`.
+Windows x64 binary package for `@xiaodonghu/skills`.
 
 Do not install this package directly. Install the CLI wrapper instead:
 
 ```bash
-npm install -g @hxd/skills
+npm install -g @xiaodonghu/skills
 ```
+

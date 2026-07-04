@@ -1,11 +1,11 @@
-# @hxd/skills
+# @xiaodonghu/skills
 
 Skills manager CLI.
 
 ## Install
 
 ```bash
-npm install -g @hxd/skills
+npm install -g @xiaodonghu/skills
 ```
 
 ## Usage
@@ -18,3 +18,4 @@ skills install glab
 ```
 
 The npm package only installs the `skills` manager. Skill packages are still resolved from configured skills registries.
+

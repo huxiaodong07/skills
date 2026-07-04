@@ -6,7 +6,7 @@ const path = require("node:path");
 
 const targets = {
   "win32-x64": {
-    packageName: "@hxd/skills-win32-x64",
+    packageName: "@xiaodonghu/skills-win32-x64",
     binary: path.join("bin", "skills.exe")
   }
 };
@@ -15,7 +15,7 @@ const key = `${process.platform}-${process.arch}`;
 const target = targets[key];
 
 if (!target) {
-  console.error(`@hxd/skills does not provide a binary for ${key}.`);
+  console.error(`@xiaodonghu/skills does not provide a binary for ${key}.`);
   console.error("Current published package supports win32-x64 only.");
   process.exit(1);
 }
@@ -27,7 +27,7 @@ try {
 } catch (error) {
   console.error(`Cannot find ${target.packageName}.`);
   console.error("Reinstall with optional dependencies enabled:");
-  console.error("  npm install -g @hxd/skills --include=optional");
+  console.error("  npm install -g @xiaodonghu/skills --include=optional");
   process.exit(1);
 }
 
@@ -41,3 +41,4 @@ if (result.error) {
 }
 
 process.exit(result.status === null ? 1 : result.status);
+
