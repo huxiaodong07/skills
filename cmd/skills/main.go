@@ -26,6 +26,9 @@ type Registry struct {
 	URL  string `json:"url"`
 }
 
+const defaultRegistryName = "xiaodonghu"
+const defaultRegistryURL = "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/registry-index.json"
+
 type Index struct {
 	Schema      int     `json:"schema"`
 	GeneratedAt string  `json:"generated_at"`
@@ -388,14 +391,14 @@ func configPath() string { return filepath.Join(configDir(), "config.json") }
 func lockPath() string   { return filepath.Join(installDir(), "skills.lock") }
 
 func loadConfig() (Config, error) {
-	cfg := Config{Registries: map[string]Registry{}}
 	b, err := os.ReadFile(configPath())
 	if os.IsNotExist(err) {
-		return cfg, nil
+		return defaultConfig(), nil
 	}
 	if err != nil {
-		return cfg, err
+		return Config{}, err
 	}
+	cfg := Config{}
 	if err := json.Unmarshal(b, &cfg); err != nil {
 		return cfg, err
 	}
@@ -403,6 +406,12 @@ func loadConfig() (Config, error) {
 		cfg.Registries = map[string]Registry{}
 	}
 	return cfg, nil
+}
+
+func defaultConfig() Config {
+	return Config{Registries: map[string]Registry{
+		defaultRegistryName: {Name: defaultRegistryName, URL: defaultRegistryURL},
+	}}
 }
 
 func saveConfig(cfg Config) error {

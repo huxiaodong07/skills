@@ -1,6 +1,6 @@
 # skills-cli
 
-Internal skill package manager.
+General-purpose skill package manager.
 
 ## Install from npm
 
@@ -9,13 +9,19 @@ npm install -g @xiaodonghu/skills
 skills --help
 ```
 
+Fresh installs use the public default registry:
+
+```text
+https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/registry-index.json
+```
+
 ## MVP commands
 
 ```powershell
-skills registry add ciqtek http://172.16.30.151:8099/api/v4/projects/144/repository/files/registry-index.json/raw?ref=main
-skills search glab
-skills info glab
-skills install glab
+skills registry list
+skills search demo
+skills info demo
+skills install demo
 skills list
 skills doctor
 ```
@@ -23,8 +29,8 @@ skills doctor
 ## Packaging commands
 
 ```powershell
-skills pack D:\ToolManage\skills\glab --out dist
-skills publish D:\ToolManage\skills\glab --gitlab-url http://172.16.30.151:8099 --project-id 142 --dist dist --token-env GITLAB_API_PAT
+skills pack path\to\skill --out dist
+skills publish path\to\skill --gitlab-url https://git.example.com --project-id 123 --dist dist --token-env GITLAB_API_PAT
 ```
 
 `skills` does not manage tool tokens. Authentication is handled by each installed skill or its CLI.
