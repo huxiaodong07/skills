@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-07-04T09:49:53Z",
+  "generated_at": "2026-07-04T10:40:46Z",
   "plugins": [
     {
       "name": "gitlab-tools",
@@ -144,6 +144,42 @@
           "package_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/nexus/0.1.0/nexus-0.1.0.skillpack.tar.gz",
           "manifest_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/nexus/0.1.0/nexus-0.1.0.manifest.json",
           "sha256": "de19d5c63fe6586bb0b6608700f5c41a131f37d962cc9af19b593728bfef2a9d"
+        }
+      ]
+    },
+    {
+      "name": "build-project",
+      "latest": "0.1.0",
+      "description": "Build source projects into runtime directories with a compiled CLI.",
+      "repository": "https://github.com/huxiaodong07/skills",
+      "source_repository": "https://github.com/huxiaodong07/skills-tools",
+      "source_visibility": "private",
+      "artifact_mode": "registry-packaged",
+      "source": "skills/build-project",
+      "tags": [
+        "build",
+        "cmake",
+        "xmake",
+        "qt",
+        "msvc",
+        "cli"
+      ],
+      "auth": {
+        "mode": "none",
+        "doc": ""
+      },
+      "permissions": {
+        "network": false,
+        "filesystem": true,
+        "process": true,
+        "destructive": true
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "package_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/build-project/0.1.0/build-project-0.1.0.skillpack.tar.gz",
+          "manifest_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/build-project/0.1.0/build-project-0.1.0.manifest.json",
+          "sha256": "2549af9fcbc909d3108d6b7625d6a30b0993dfdfc9e514d4258fbcf43512f712"
         }
       ]
     }

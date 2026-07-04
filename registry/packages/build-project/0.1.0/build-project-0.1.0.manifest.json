@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "build-project",
+  "version": "0.1.0",
+  "package": "build-project-0.1.0.skillpack.tar.gz",
+  "sha256": "2549af9fcbc909d3108d6b7625d6a30b0993dfdfc9e514d4258fbcf43512f712",
+  "created_at": "2026-07-04T10:40:33Z",
+  "cli": [
+    "build-project"
+  ]
+}
