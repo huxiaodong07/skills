@@ -8,12 +8,19 @@
   "plugins": [
     {
       "name": "gitlab-tools",
-      "source": "./",
+      "source": "https://github.com/huxiaodong07/glab",
       "version": "0.1.0",
       "description": "GitLab workflow skills",
-      "keywords": ["gitlab", "glab", "workflow", "cli"],
+      "keywords": [
+        "gitlab",
+        "glab",
+        "workflow",
+        "cli"
+      ],
       "category": "workflow",
-      "skills": ["glab"]
+      "skills": [
+        "glab"
+      ]
     }
   ]
 }

@@ -11,7 +11,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -32,7 +34,18 @@ const defaultRegistryURL = "https://raw.githubusercontent.com/huxiaodong07/skill
 type Index struct {
 	Schema      int     `json:"schema"`
 	GeneratedAt string  `json:"generated_at"`
+	Plugins     []Plugin `json:"plugins"`
 	Skills      []Skill `json:"skills"`
+}
+
+type Plugin struct {
+	Name        string   `json:"name"`
+	Version     string   `json:"version"`
+	Description string   `json:"description"`
+	Repository  string   `json:"repository"`
+	Source      string   `json:"source"`
+	Skills      []string `json:"skills"`
+	Registry    string   `json:"-"`
 }
 
 type Skill struct {
@@ -79,6 +92,17 @@ type InstalledSkill struct {
 	InstalledAt string `json:"installed_at"`
 }
 
+type BinLinks struct {
+	Commands map[string]BinLink `json:"commands"`
+}
+
+type BinLink struct {
+	Skill   string `json:"skill"`
+	Version string `json:"version"`
+	Source  string `json:"source"`
+	Target  string `json:"target"`
+}
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -94,6 +118,8 @@ func run(args []string) error {
 	switch args[0] {
 	case "registry":
 		return registryCmd(args[1:])
+	case "plugin":
+		return pluginCmd(args[1:])
 	case "search":
 		return searchCmd(args[1:])
 	case "info":
@@ -116,12 +142,15 @@ func run(args []string) error {
 }
 
 func printHelp() {
-	fmt.Println(`skills - internal skill package manager
+	fmt.Println(`skills - skill package manager
 
 Usage:
   skills registry add <name> <index-url>
   skills registry list
   skills registry remove <name>
+  skills plugin list
+  skills plugin info <name>
+  skills plugin install <name> [--yes]
   skills search <query>
   skills info <name>
   skills install <name[@version]> [--version <version>] [--yes]
@@ -172,6 +201,77 @@ func registryCmd(args []string) error {
 		fmt.Printf("registry removed: %s\n", args[1])
 	default:
 		return fmt.Errorf("unknown registry subcommand %q", args[0])
+	}
+	return nil
+}
+
+func pluginCmd(args []string) error {
+	if len(args) == 0 {
+		return errors.New("plugin subcommand required: list, info, install")
+	}
+	switch args[0] {
+	case "list":
+		if len(args) != 1 {
+			return errors.New("usage: skills plugin list")
+		}
+		plugins, err := loadAllPlugins()
+		if err != nil {
+			return err
+		}
+		if len(plugins) == 0 {
+			fmt.Println("no plugins available")
+			return nil
+		}
+		for _, p := range plugins {
+			fmt.Printf("%s\t%s\t%s\n", p.Name, p.Version, p.Description)
+		}
+	case "info":
+		if len(args) != 2 {
+			return errors.New("usage: skills plugin info <name>")
+		}
+		p, err := findPlugin(args[1])
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Name: %s\n", p.Name)
+		fmt.Printf("Version: %s\n", p.Version)
+		fmt.Printf("Description: %s\n", p.Description)
+		fmt.Printf("Repository: %s\n", p.Repository)
+		fmt.Printf("Registry: %s\n", p.Registry)
+		fmt.Println("Skills:")
+		for _, name := range p.Skills {
+			fmt.Printf("  %s\n", name)
+		}
+	case "install":
+		if len(args) == 1 {
+			return errors.New("usage: skills plugin install <name> [--yes]")
+		}
+		name := args[1]
+		yes := false
+		for i := 2; i < len(args); i++ {
+			switch args[i] {
+			case "--yes", "-y":
+				yes = true
+			default:
+				return fmt.Errorf("unknown plugin install option %q", args[i])
+			}
+		}
+		p, err := findPlugin(name)
+		if err != nil {
+			return err
+		}
+		if len(p.Skills) == 0 {
+			return fmt.Errorf("plugin %s has no skills", p.Name)
+		}
+		fmt.Printf("Plugin: %s\nVersion: %s\nSkills: %s\n", p.Name, p.Version, strings.Join(p.Skills, ", "))
+		for _, skillName := range p.Skills {
+			if err := installSkillByName(skillName, "", yes); err != nil {
+				return fmt.Errorf("install plugin %s skill %s: %w", p.Name, skillName, err)
+			}
+		}
+		fmt.Printf("installed plugin %s with %d skills\n", p.Name, len(p.Skills))
+	default:
+		return fmt.Errorf("unknown plugin subcommand %q", args[0])
 	}
 	return nil
 }
@@ -249,64 +349,7 @@ func installCmd(args []string) error {
 			return fmt.Errorf("unknown install option %q", args[i])
 		}
 	}
-	s, err := findSkill(name)
-	if err != nil {
-		return err
-	}
-	v, err := chooseVersion(s, version)
-	if err != nil {
-		return err
-	}
-	if v.SHA256 == "" {
-		return fmt.Errorf("skill %s@%s has no sha256 in index", s.Name, v.Version)
-	}
-	showInstallSummary(s, v)
-	dest := filepath.Join(installDir(), s.Name)
-	if exists(dest) && !yes {
-		return fmt.Errorf("%s already exists; rerun with --yes to replace", dest)
-	}
-	if err := os.MkdirAll(installDir(), 0o755); err != nil {
-		return err
-	}
-	tmp, err := os.MkdirTemp(installDir(), ".tmp-install-*")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(tmp)
-	pkg := filepath.Join(tmp, filepath.Base(v.PackageURL))
-	if err := downloadFile(v.PackageURL, pkg); err != nil {
-		return err
-	}
-	actual, err := fileSHA256(pkg)
-	if err != nil {
-		return err
-	}
-	if !strings.EqualFold(actual, v.SHA256) {
-		return fmt.Errorf("sha256 mismatch: got %s want %s", actual, v.SHA256)
-	}
-	unpackDir := filepath.Join(tmp, "unpack")
-	if err := os.MkdirAll(unpackDir, 0o755); err != nil {
-		return err
-	}
-	if err := untarGz(pkg, unpackDir); err != nil {
-		return err
-	}
-	if err := validateSkillDir(unpackDir); err != nil {
-		return err
-	}
-	if exists(dest) {
-		if err := os.RemoveAll(dest); err != nil {
-			return err
-		}
-	}
-	if err := os.Rename(unpackDir, dest); err != nil {
-		return err
-	}
-	if err := updateLock(InstalledSkill{Name: s.Name, Version: v.Version, Registry: s.Registry, SHA256: v.SHA256, InstalledAt: time.Now().Format(time.RFC3339)}); err != nil {
-		return err
-	}
-	fmt.Printf("installed %s@%s to %s\n", s.Name, v.Version, dest)
-	return nil
+	return installSkillByName(name, version, yes)
 }
 
 func listCmd(args []string) error {
@@ -332,6 +375,9 @@ func removeCmd(args []string) error {
 		return errors.New("remove requires --yes")
 	}
 	name := args[0]
+	if err := removeBinLinks(name); err != nil {
+		return err
+	}
 	dest := filepath.Join(installDir(), name)
 	if err := os.RemoveAll(dest); err != nil {
 		return err
@@ -357,6 +403,8 @@ func removeCmd(args []string) error {
 func doctorCmd(args []string) error {
 	fmt.Printf("config dir: %s\n", configDir())
 	fmt.Printf("install dir: %s\n", installDir())
+	fmt.Printf("command bin: %s\n", commandBinDir())
+	fmt.Printf("command bin on PATH: %v\n", commandBinOnPATH())
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
@@ -386,6 +434,17 @@ func installDir() string {
 	h, _ := os.UserHomeDir()
 	return filepath.Join(h, ".agents", "skills")
 }
+
+func hxdHomeDir() string {
+	if v := os.Getenv("HXD_SKILLS_HOME"); v != "" {
+		return v
+	}
+	h, _ := os.UserHomeDir()
+	return filepath.Join(h, "hxdSkills")
+}
+
+func commandBinDir() string { return filepath.Join(hxdHomeDir(), "bin") }
+func linksPath() string     { return filepath.Join(hxdHomeDir(), "links.json") }
 
 func configPath() string { return filepath.Join(configDir(), "config.json") }
 func lockPath() string   { return filepath.Join(installDir(), "skills.lock") }
@@ -448,6 +507,29 @@ func loadAllSkills() ([]Skill, error) {
 	return out, nil
 }
 
+func loadAllPlugins() ([]Plugin, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, err
+	}
+	if len(cfg.Registries) == 0 {
+		return nil, errors.New("no registries configured; use skills registry add <name> <index-url>")
+	}
+	var out []Plugin
+	for _, name := range sortedRegistryNames(cfg) {
+		reg := cfg.Registries[name]
+		idx, err := fetchIndex(reg.URL)
+		if err != nil {
+			return nil, fmt.Errorf("registry %s: %w", name, err)
+		}
+		for _, p := range idx.Plugins {
+			p.Registry = name
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
 func fetchIndex(url string) (Index, error) {
 	var r io.ReadCloser
 	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
@@ -502,6 +584,25 @@ func findSkill(name string) (Skill, error) {
 	return Skill{}, fmt.Errorf("skill not found: %s; available: %s", name, strings.Join(available, ", "))
 }
 
+func findPlugin(name string) (Plugin, error) {
+	plugins, err := loadAllPlugins()
+	if err != nil {
+		return Plugin{}, err
+	}
+	var available []string
+	for _, p := range plugins {
+		available = append(available, p.Name)
+		if p.Name == name {
+			return p, nil
+		}
+	}
+	sort.Strings(available)
+	if len(available) == 0 {
+		return Plugin{}, fmt.Errorf("plugin not found: %s; no plugins available", name)
+	}
+	return Plugin{}, fmt.Errorf("plugin not found: %s; available: %s", name, strings.Join(available, ", "))
+}
+
 func matchesSkill(s Skill, q string) bool {
 	if strings.Contains(strings.ToLower(s.Name), q) || strings.Contains(strings.ToLower(s.Description), q) {
 		return true
@@ -544,6 +645,80 @@ func showInstallSummary(s Skill, v VersionRef) {
 	fmt.Printf("Skill: %s\nVersion: %s\nSource: %s\n", s.Name, v.Version, s.Repository)
 	fmt.Printf("Permissions: network=%v filesystem=%v process=%v destructive=%v\n", s.Permissions.Network, s.Permissions.Filesystem, s.Permissions.Process, s.Permissions.Destructive)
 	fmt.Printf("Authentication: %s (%s)\n", s.Auth.Mode, s.Auth.Doc)
+}
+
+func installSkillByName(name, version string, yes bool) error {
+	s, err := findSkill(name)
+	if err != nil {
+		return err
+	}
+	v, err := chooseVersion(s, version)
+	if err != nil {
+		return err
+	}
+	return installResolvedSkill(s, v, yes)
+}
+
+func installResolvedSkill(s Skill, v VersionRef, yes bool) error {
+	if v.SHA256 == "" {
+		return fmt.Errorf("skill %s@%s has no sha256 in index", s.Name, v.Version)
+	}
+	showInstallSummary(s, v)
+	dest := filepath.Join(installDir(), s.Name)
+	if exists(dest) && !yes {
+		return fmt.Errorf("%s already exists; rerun with --yes to replace", dest)
+	}
+	if err := os.MkdirAll(installDir(), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.MkdirTemp(installDir(), ".tmp-install-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	pkg := filepath.Join(tmp, filepath.Base(v.PackageURL))
+	if err := downloadFile(v.PackageURL, pkg); err != nil {
+		return err
+	}
+	actual, err := fileSHA256(pkg)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(actual, v.SHA256) {
+		return fmt.Errorf("sha256 mismatch: got %s want %s", actual, v.SHA256)
+	}
+	unpackDir := filepath.Join(tmp, "unpack")
+	if err := os.MkdirAll(unpackDir, 0o755); err != nil {
+		return err
+	}
+	if err := untarGz(pkg, unpackDir); err != nil {
+		return err
+	}
+	if err := validateSkillDir(unpackDir); err != nil {
+		return err
+	}
+	if err := checkBinConflicts(unpackDir, s.Name, yes); err != nil {
+		return err
+	}
+	if exists(dest) {
+		if err := removeBinLinks(s.Name); err != nil {
+			return err
+		}
+		if err := os.RemoveAll(dest); err != nil {
+			return err
+		}
+	}
+	if err := os.Rename(unpackDir, dest); err != nil {
+		return err
+	}
+	if err := exposeSkillBin(dest, s.Name, v.Version, true); err != nil {
+		return err
+	}
+	if err := updateLock(InstalledSkill{Name: s.Name, Version: v.Version, Registry: s.Registry, SHA256: v.SHA256, InstalledAt: time.Now().Format(time.RFC3339)}); err != nil {
+		return err
+	}
+	fmt.Printf("installed %s@%s to %s\n", s.Name, v.Version, dest)
+	return nil
 }
 
 func downloadFile(url, dest string) error {
@@ -705,6 +880,210 @@ func updateLock(item InstalledSkill) error {
 	}
 	lock.Installed = append(lock.Installed, item)
 	return saveLock(lock)
+}
+
+func loadBinLinks() (BinLinks, error) {
+	links := BinLinks{Commands: map[string]BinLink{}}
+	b, err := os.ReadFile(linksPath())
+	if os.IsNotExist(err) {
+		return links, nil
+	}
+	if err != nil {
+		return links, err
+	}
+	if err := json.Unmarshal(b, &links); err != nil {
+		return links, err
+	}
+	if links.Commands == nil {
+		links.Commands = map[string]BinLink{}
+	}
+	return links, nil
+}
+
+func saveBinLinks(links BinLinks) error {
+	if err := os.MkdirAll(hxdHomeDir(), 0o755); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(links, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(linksPath(), append(b, '\n'), 0o600)
+}
+
+func checkBinConflicts(skillDir, skillName string, overwrite bool) error {
+	binDir := filepath.Join(skillDir, "bin")
+	entries, err := os.ReadDir(binDir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	links, err := loadBinLinks()
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		target := filepath.Join(commandBinDir(), name)
+		link, known := links.Commands[name]
+		if exists(target) && (!known || link.Skill != skillName) && !overwrite {
+			if known {
+				return fmt.Errorf("command %s is already managed by skill %s; rerun with --yes to replace", name, link.Skill)
+			}
+			return fmt.Errorf("command %s already exists in %s; rerun with --yes to replace", name, commandBinDir())
+		}
+	}
+	return nil
+}
+
+func exposeSkillBin(skillDir, skillName, version string, overwrite bool) error {
+	binDir := filepath.Join(skillDir, "bin")
+	entries, err := os.ReadDir(binDir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(commandBinDir(), 0o755); err != nil {
+		return err
+	}
+	links, err := loadBinLinks()
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		source := filepath.Join(binDir, entry.Name())
+		target := filepath.Join(commandBinDir(), entry.Name())
+		link, known := links.Commands[entry.Name()]
+		if exists(target) && (!known || link.Skill != skillName) && !overwrite {
+			if known {
+				return fmt.Errorf("command %s is already managed by skill %s; rerun with --yes to replace", entry.Name(), link.Skill)
+			}
+			return fmt.Errorf("command %s already exists in %s; rerun with --yes to replace", entry.Name(), commandBinDir())
+		}
+		if err := copyFile(source, target, info.Mode()); err != nil {
+			return err
+		}
+		absSource, err := filepath.Abs(source)
+		if err != nil {
+			return err
+		}
+		absTarget, err := filepath.Abs(target)
+		if err != nil {
+			return err
+		}
+		links.Commands[entry.Name()] = BinLink{Skill: skillName, Version: version, Source: absSource, Target: absTarget}
+	}
+	if err := saveBinLinks(links); err != nil {
+		return err
+	}
+	if len(entries) > 0 {
+		if err := ensureCommandBinOnPATH(); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to update PATH: %v\n", err)
+		}
+	}
+	return nil
+}
+
+func removeBinLinks(skillName string) error {
+	links, err := loadBinLinks()
+	if err != nil {
+		return err
+	}
+	changed := false
+	for command, link := range links.Commands {
+		if link.Skill != skillName {
+			continue
+		}
+		if link.Target != "" {
+			if err := os.Remove(link.Target); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+		delete(links.Commands, command)
+		changed = true
+	}
+	if changed {
+		return saveBinLinks(links)
+	}
+	return nil
+}
+
+func copyFile(source, target string, mode os.FileMode) error {
+	in, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(out, in)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
+}
+
+func ensureCommandBinOnPATH() error {
+	if os.Getenv("SKILLS_SKIP_PATH_UPDATE") != "" {
+		return nil
+	}
+	if commandBinOnPATH() {
+		return nil
+	}
+	if runtime.GOOS != "windows" {
+		fmt.Fprintf(os.Stderr, "warning: add %s to PATH to use installed commands directly\n", commandBinDir())
+		return nil
+	}
+	script := fmt.Sprintf(`$dir = %q; $path = [Environment]::GetEnvironmentVariable("Path", "User"); if ([string]::IsNullOrWhiteSpace($path)) { [Environment]::SetEnvironmentVariable("Path", $dir, "User") } else { $parts = $path -split ";"; if ($parts -notcontains $dir) { [Environment]::SetEnvironmentVariable("Path", ($path.TrimEnd(";") + ";" + $dir), "User") } }`, commandBinDir())
+	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	current := os.Getenv("PATH")
+	if current == "" {
+		return os.Setenv("PATH", commandBinDir())
+	}
+	return os.Setenv("PATH", current+";"+commandBinDir())
+}
+
+func commandBinOnPATH() bool {
+	target, err := filepath.Abs(commandBinDir())
+	if err != nil {
+		target = commandBinDir()
+	}
+	for _, p := range filepath.SplitList(os.Getenv("PATH")) {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			abs = p
+		}
+		if runtime.GOOS == "windows" {
+			if strings.EqualFold(abs, target) {
+				return true
+			}
+			continue
+		}
+		if abs == target {
+			return true
+		}
+	}
+	return false
 }
 
 func sortedRegistryNames(cfg Config) []string {

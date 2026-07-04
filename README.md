@@ -22,9 +22,19 @@ skills registry list
 skills search glab
 skills info glab
 skills install glab
+skills plugin list
+skills plugin install gitlab-tools
 skills list
 skills doctor
 ```
+
+When an installed skill contains a `bin/` directory, commands are copied into the unified user command directory:
+
+```text
+~/hxdSkills/bin
+```
+
+Only this directory is added to the user PATH.
 
 ## Packaging commands
 
@@ -35,6 +45,12 @@ skills publish path\to\skill --gitlab-url https://git.example.com --project-id 1
 
 `skills` does not manage tool tokens. Authentication is handled by each installed skill or its CLI.
 
+
+## Skill repositories
+
+This repository is the CLI and aggregate registry. Individual public skills live in separate repositories, for example:
+
+- https://github.com/huxiaodong07/glab
 ## Publish npm packages
 
 ```powershell
@@ -42,6 +58,7 @@ skills publish path\to\skill --gitlab-url https://git.example.com --project-id 1
 ```
 
 The public npm wrapper is `@xiaodonghu/skills`. The Windows binary package is `@xiaodonghu/skills-win32-x64`.
+
 
 
 
