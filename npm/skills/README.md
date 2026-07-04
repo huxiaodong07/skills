@@ -12,7 +12,7 @@ npm install -g @xiaodonghu/skills
 
 ```bash
 skills --help
-skills registry add ciqtek <registry-index-url>
+skills registry add personal <registry-index-url>
 skills search glab
 skills install glab
 ```

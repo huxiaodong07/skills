@@ -1,0 +1,19 @@
+{
+  "name": "xiaodonghu-skills",
+  "id": "xiaodonghu-skills",
+  "metadata": {
+    "description": "Public skills registry and plugin collection",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "gitlab-tools",
+      "source": "./",
+      "version": "0.1.0",
+      "description": "GitLab workflow skills",
+      "keywords": ["gitlab", "glab", "workflow", "cli"],
+      "category": "workflow",
+      "skills": ["glab"]
+    }
+  ]
+}

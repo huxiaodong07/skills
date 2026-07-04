@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "name": "glab",
+  "version": "0.1.0",
+  "description": "GitLab workflow skill for the glab CLI",
+  "entry": "SKILL.md",
+  "tags": ["gitlab", "workflow", "cli"],
+  "platforms": ["windows", "linux", "macos"],
+  "language": "markdown",
+  "auth": {
+    "mode": "external",
+    "doc": "docs/authentication.md",
+    "summary": "Use glab's own authentication flow. skills does not store or inject GitLab tokens."
+  },
+  "maintainers": ["xiaodonghu"],
+  "license": "MIT"
+}

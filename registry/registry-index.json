@@ -1,6 +1,41 @@
 {
   "schema": 1,
   "generated_at": "2026-07-04T00:00:00Z",
-  "plugins": [],
-  "skills": []
+  "plugins": [
+    {
+      "name": "gitlab-tools",
+      "version": "0.1.0",
+      "description": "GitLab workflow skills",
+      "source": ".claude-plugin/marketplace.json",
+      "skills": [
+        "glab"
+      ]
+    }
+  ],
+  "skills": [
+    {
+      "name": "glab",
+      "latest": "0.1.0",
+      "description": "GitLab workflow skill for the glab CLI",
+      "repository": "https://github.com/huxiaodong07/skills",
+      "source": "skills/glab",
+      "tags": [
+        "gitlab",
+        "workflow",
+        "cli"
+      ],
+      "auth": {
+        "mode": "external",
+        "doc": "docs/authentication.md"
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "package_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/glab-0.1.0.skillpack.tar.gz",
+          "manifest_url": "https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/packages/glab-0.1.0.manifest.json",
+          "sha256": "ceed426c329c6c3d7f6394abe04da9a8143cb548693f4657ef9486bb43654a49"
+        }
+      ]
+    }
+  ]
 }

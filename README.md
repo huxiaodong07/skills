@@ -19,9 +19,9 @@ https://raw.githubusercontent.com/huxiaodong07/skills/main/registry/registry-ind
 
 ```powershell
 skills registry list
-skills search demo
-skills info demo
-skills install demo
+skills search glab
+skills info glab
+skills install glab
 skills list
 skills doctor
 ```
@@ -42,5 +42,6 @@ skills publish path\to\skill --gitlab-url https://git.example.com --project-id 1
 ```
 
 The public npm wrapper is `@xiaodonghu/skills`. The Windows binary package is `@xiaodonghu/skills-win32-x64`.
+
 
 
