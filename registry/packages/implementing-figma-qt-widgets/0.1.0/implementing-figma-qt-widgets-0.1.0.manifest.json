@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "implementing-figma-qt-widgets",
+  "version": "0.1.0",
+  "package": "implementing-figma-qt-widgets-0.1.0.skillpack.tar.gz",
+  "sha256": "d57c4d74d6a479ac4b11dfc6550e86ef5f8cc0548d5776f62ea62b8b9d60cb82",
+  "created_at": "2026-07-04T08:43:15Z",
+  "cli": [
+    "figma-qt-widgets"
+  ]
+}
