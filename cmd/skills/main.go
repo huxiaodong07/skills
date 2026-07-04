@@ -121,7 +121,7 @@ Usage:
   skills registry remove <name>
   skills search <query>
   skills info <name>
-  skills install <name[@version]> [--yes]
+  skills install <name[@version]> [--version <version>] [--yes]
   skills pack <skill-root> [--out dist]
   skills publish <skill-root> --gitlab-url <url> --project-id <id> [--dist dist] [--token-env CI_JOB_TOKEN] [--insecure-skip-tls-verify]
   skills list
@@ -219,10 +219,33 @@ func infoCmd(args []string) error {
 
 func installCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: skills install <name[@version]> [--yes]")
+		return errors.New("usage: skills install <name[@version]> [--version <version>] [--yes]")
 	}
 	name, version := splitNameVersion(args[0])
-	yes := hasFlag(args[1:], "--yes")
+	if name == "" || strings.HasPrefix(name, "-") {
+		return errors.New("usage: skills install <name[@version]> [--version <version>] [--yes]")
+	}
+	yes := false
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--yes", "-y":
+			yes = true
+		case "--version":
+			if i+1 >= len(args) {
+				return errors.New("install --version requires a value")
+			}
+			if version != "" {
+				return errors.New("install version specified more than once")
+			}
+			i++
+			version = args[i]
+			if version == "" || strings.HasPrefix(version, "-") {
+				return errors.New("install --version requires a value")
+			}
+		default:
+			return fmt.Errorf("unknown install option %q", args[i])
+		}
+	}
 	s, err := findSkill(name)
 	if err != nil {
 		return err
@@ -456,12 +479,18 @@ func findSkill(name string) (Skill, error) {
 	if err != nil {
 		return Skill{}, err
 	}
+	var available []string
 	for _, s := range skills {
+		available = append(available, s.Name)
 		if s.Name == name {
 			return s, nil
 		}
 	}
-	return Skill{}, fmt.Errorf("skill not found: %s", name)
+	sort.Strings(available)
+	if len(available) == 0 {
+		return Skill{}, fmt.Errorf("skill not found: %s; no skills available", name)
+	}
+	return Skill{}, fmt.Errorf("skill not found: %s; available: %s", name, strings.Join(available, ", "))
 }
 
 func matchesSkill(s Skill, q string) bool {
@@ -480,12 +509,18 @@ func chooseVersion(s Skill, version string) (VersionRef, error) {
 	if version == "" {
 		version = s.Latest
 	}
+	var available []string
 	for _, v := range s.Versions {
+		available = append(available, v.Version)
 		if v.Version == version {
 			return v, nil
 		}
 	}
-	return VersionRef{}, fmt.Errorf("version %s not found for %s", version, s.Name)
+	sort.Strings(available)
+	if len(available) == 0 {
+		return VersionRef{}, fmt.Errorf("version %s not found for %s; no versions available", version, s.Name)
+	}
+	return VersionRef{}, fmt.Errorf("version %s not found for %s; available: %s", version, s.Name, strings.Join(available, ", "))
 }
 
 func splitNameVersion(raw string) (string, string) {
