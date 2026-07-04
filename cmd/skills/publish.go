@@ -122,7 +122,11 @@ func uploadGenericPackageFile(apiBase, projectID, packageName, version, path, to
 	} else {
 		req.Header.Set("PRIVATE-TOKEN", token)
 	}
-	resp, err := internalHTTPClientWithTLS(insecureSkipTLSVerify).Do(req)
+	client, err := internalHTTPClientWithTLS(insecureSkipTLSVerify)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}

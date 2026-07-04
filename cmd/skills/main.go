@@ -21,10 +21,20 @@ import (
 
 type Config struct {
 	Registries map[string]Registry `json:"registries"`
+	Network    NetworkConfig       `json:"network"`
 }
 
 type Registry struct {
 	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
+type NetworkConfig struct {
+	Proxy ProxyConfig `json:"proxy"`
+}
+
+type ProxyConfig struct {
+	Mode string `json:"mode"`
 	URL  string `json:"url"`
 }
 
@@ -125,6 +135,8 @@ func run(args []string) error {
 		return nil
 	}
 	switch args[0] {
+	case "config":
+		return configCmd(args[1:])
 	case "registry":
 		return registryCmd(args[1:])
 	case "plugin":
@@ -154,6 +166,9 @@ func printHelp() {
 	fmt.Println(`skills - skill package manager
 
 Usage:
+  skills config list
+  skills config get proxy
+  skills config set proxy <system|none|url>
   skills registry add <name> <index-url>
   skills registry list
   skills registry remove <name>
@@ -207,6 +222,54 @@ func registryCmd(args []string) error {
 		fmt.Printf("registry removed: %s\n", args[1])
 	default:
 		return fmt.Errorf("unknown registry subcommand %q", args[0])
+	}
+	return nil
+}
+
+func configCmd(args []string) error {
+	if len(args) == 0 {
+		return errors.New("config subcommand required: list, get, set")
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	switch args[0] {
+	case "list":
+		if len(args) != 1 {
+			return errors.New("usage: skills config list")
+		}
+		fmt.Printf("proxy\t%s\n", formatProxyConfig(cfg.Network.Proxy))
+	case "get":
+		if len(args) != 2 {
+			return errors.New("usage: skills config get <key>")
+		}
+		switch args[1] {
+		case "proxy":
+			fmt.Println(formatProxyConfig(cfg.Network.Proxy))
+		default:
+			return fmt.Errorf("unknown config key %q", args[1])
+		}
+	case "set":
+		if len(args) != 3 {
+			return errors.New("usage: skills config set proxy <system|none|url>")
+		}
+		switch args[1] {
+		case "proxy":
+			proxy, err := parseProxyConfig(args[2])
+			if err != nil {
+				return err
+			}
+			cfg.Network.Proxy = proxy
+		default:
+			return fmt.Errorf("unknown config key %q", args[1])
+		}
+		if err := saveConfig(cfg); err != nil {
+			return err
+		}
+		fmt.Printf("config set: proxy %s\n", formatProxyConfig(cfg.Network.Proxy))
+	default:
+		return fmt.Errorf("unknown config subcommand %q", args[0])
 	}
 	return nil
 }
@@ -459,6 +522,11 @@ func doctorCmd(args []string) error {
 	if err != nil {
 		return err
 	}
+	effectiveProxy, err := effectiveProxyConfig(cfg.Network.Proxy)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("proxy: %s\n", formatProxyConfig(effectiveProxy))
 	fmt.Printf("registries: %d\n", len(cfg.Registries))
 	for _, name := range sortedRegistryNames(cfg) {
 		fmt.Printf("  %s\t%s\n", name, cfg.Registries[name].URL)
@@ -514,13 +582,69 @@ func loadConfig() (Config, error) {
 	if cfg.Registries == nil {
 		cfg.Registries = map[string]Registry{}
 	}
+	cfg.Network.Proxy = normalizeProxyConfig(cfg.Network.Proxy)
 	return cfg, nil
 }
 
 func defaultConfig() Config {
-	return Config{Registries: map[string]Registry{
-		defaultRegistryName: {Name: defaultRegistryName, URL: defaultRegistryURL},
-	}}
+	return Config{
+		Registries: map[string]Registry{
+			defaultRegistryName: {Name: defaultRegistryName, URL: defaultRegistryURL},
+		},
+		Network: NetworkConfig{Proxy: ProxyConfig{Mode: "system"}},
+	}
+}
+
+func normalizeProxyConfig(proxy ProxyConfig) ProxyConfig {
+	if proxy.Mode == "" {
+		proxy.Mode = "system"
+	}
+	if proxy.Mode != "system" && proxy.Mode != "none" && proxy.Mode != "custom" {
+		proxy.Mode = "system"
+		proxy.URL = ""
+	}
+	if proxy.Mode != "custom" {
+		proxy.URL = ""
+	}
+	return proxy
+}
+
+func parseProxyConfig(raw string) (ProxyConfig, error) {
+	switch strings.ToLower(raw) {
+	case "system":
+		return ProxyConfig{Mode: "system"}, nil
+	case "none":
+		return ProxyConfig{Mode: "none"}, nil
+	}
+	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") && !strings.HasPrefix(raw, "socks5://") {
+		return ProxyConfig{}, errors.New("proxy must be system, none, or a proxy URL")
+	}
+	return ProxyConfig{Mode: "custom", URL: raw}, nil
+}
+
+func effectiveProxyConfig(configured ProxyConfig) (ProxyConfig, error) {
+	if mode := os.Getenv("SKILLS_PROXY_MODE"); mode != "" {
+		if strings.EqualFold(mode, "custom") {
+			url := os.Getenv("SKILLS_PROXY_URL")
+			if url == "" {
+				return ProxyConfig{}, errors.New("SKILLS_PROXY_MODE=custom requires SKILLS_PROXY_URL")
+			}
+			return parseProxyConfig(url)
+		}
+		return parseProxyConfig(mode)
+	}
+	if url := os.Getenv("SKILLS_PROXY_URL"); url != "" {
+		return parseProxyConfig(url)
+	}
+	return normalizeProxyConfig(configured), nil
+}
+
+func formatProxyConfig(proxy ProxyConfig) string {
+	proxy = normalizeProxyConfig(proxy)
+	if proxy.Mode == "custom" {
+		return proxy.URL
+	}
+	return proxy.Mode
 }
 
 func saveConfig(cfg Config) error {
@@ -613,7 +737,11 @@ func fetchIndex(url string) (Index, error) {
 			return Index{}, err
 		}
 		addRegistryAuth(req)
-		resp, err := internalHTTPClient().Do(req)
+		client, err := internalHTTPClient()
+		if err != nil {
+			return Index{}, err
+		}
+		resp, err := client.Do(req)
 		if err != nil {
 			return Index{}, err
 		}
@@ -919,7 +1047,11 @@ func downloadFile(url, dest string) error {
 		return err
 	}
 	addRegistryAuth(req)
-	resp, err := internalHTTPClient().Do(req)
+	client, err := internalHTTPClient()
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}

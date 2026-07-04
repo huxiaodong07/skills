@@ -29,6 +29,17 @@ skills list
 skills doctor
 ```
 
+## Proxy configuration
+
+```powershell
+skills config get proxy
+skills config set proxy system
+skills config set proxy none
+skills config set proxy http://127.0.0.1:7890
+```
+
+`system` reads `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`. Environment variables `SKILLS_PROXY_MODE` and `SKILLS_PROXY_URL` override the saved config for the current process.
+
 When an installed skill contains a `bin/` directory, commands are copied into the unified user command directory:
 
 ```text
